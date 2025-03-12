@@ -918,7 +918,7 @@ export default function RoomPage() {
 
   if (authLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex min-h-screen items-center justify-center">
         <p>Loading...</p>
       </div>
     )
@@ -926,10 +926,10 @@ export default function RoomPage() {
 
   if (showUsernamePrompt) {
     return (
-      <div className="flex items-center justify-center min-h-screen text-white bg-black">
-        <div className="w-full max-w-md p-6 bg-gray-900 border border-gray-800 rounded-lg">
-          <h2 className="mb-4 text-xl font-bold">Choose a display name</h2>
-          <p className="mb-4 text-gray-400">This name will be shown to others in the room.</p>
+      <div className="flex min-h-screen items-center justify-center bg-black text-white">
+        <div className="w-full max-w-md p-6 rounded-lg bg-gray-900 border border-gray-800">
+          <h2 className="text-xl font-bold mb-4">Choose a display name</h2>
+          <p className="text-gray-400 mb-4">This name will be shown to others in the room.</p>
           <div className="space-y-4">
             <div>
               <Input
@@ -950,20 +950,20 @@ export default function RoomPage() {
 
   if (!room) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex min-h-screen items-center justify-center">
         <p>Loading room...</p>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col h-screen text-white bg-black">
-      <header className="flex items-center px-4 border-b h-14 border-white/10">
+    <div className="flex flex-col h-screen bg-black text-white">
+      <header className="h-14 flex items-center px-4 border-b border-white/10">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="h-4 w-4" />
           <span className="font-medium">{room.name}</span>
         </Link>
-        <div className="flex items-center gap-2 ml-auto">
+        <div className="ml-auto flex items-center gap-2">
           <span className="text-sm text-gray-400">
             {room.participants} {room.participants === 1 ? "listener" : "listeners"}
           </span>
@@ -981,7 +981,7 @@ export default function RoomPage() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Main content */}
-        <div className="flex flex-col flex-1">
+        <div className="flex-1 flex flex-col">
           {/* Current song info */}
           <div className="p-4 border-b border-white/10">
             {room.currentlyPlaying ? (
@@ -990,10 +990,10 @@ export default function RoomPage() {
                   <img
                     src={room.currentlyPlaying.thumbnail || "/placeholder.svg"}
                     alt={room.currentlyPlaying.title}
-                    className="object-cover w-16 h-16 rounded"
+                    className="w-16 h-16 rounded object-cover"
                   />
                   <div className="flex-1 min-w-0">
-                    <h2 className="text-lg font-medium truncate">{room.currentlyPlaying.title}</h2>
+                    <h2 className="font-medium text-lg truncate">{room.currentlyPlaying.title}</h2>
                     <p className="text-sm text-gray-400">
                       {room.currentlyPlaying.channelTitle} • Added by {room.currentlyPlaying.addedByName}
                       {room.currentlyPlaying.addedByAnonymous && " (Guest)"}
@@ -1003,7 +1003,7 @@ export default function RoomPage() {
                     {isCreator && (
                       <>
                         <Button variant="ghost" size="icon" onClick={togglePlayPause} disabled={!playerReady}>
-                          {localPlaybackState.isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+                          {localPlaybackState.isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
                         </Button>
                         <Button
                           variant="ghost"
@@ -1011,7 +1011,7 @@ export default function RoomPage() {
                           onClick={playNextSong}
                           disabled={!playerReady || !room.queue || room.queue.length === 0}
                         >
-                          <SkipForward className="w-5 h-5" />
+                          <SkipForward className="h-5 w-5" />
                         </Button>
                       </>
                     )}
@@ -1026,8 +1026,8 @@ export default function RoomPage() {
                 />
               </div>
             ) : (
-              <div className="py-4 text-center">
-                <Music className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+              <div className="text-center py-4">
+                <Music className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                 <p className="text-gray-400">No song playing</p>
               </div>
             )}
@@ -1037,19 +1037,19 @@ export default function RoomPage() {
           <div className="flex-1 overflow-hidden">
             <ScrollArea className="h-full px-4" ref={scrollAreaRef}>
               {messages.length === 0 ? (
-                <p className="py-8 text-center text-gray-400">No messages yet. Start the conversation!</p>
+                <p className="text-center py-8 text-gray-400">No messages yet. Start the conversation!</p>
               ) : (
-                <div className="py-4 space-y-4">
+                <div className="space-y-4 py-4">
                   {messages.map((message) => (
                     <div key={message.id} className="flex items-start gap-2">
-                      <Avatar className="w-8 h-8">
+                      <Avatar className="h-8 w-8">
                         <AvatarFallback className={message.isAnonymous ? "bg-yellow-800" : ""}>
                           {message.username.charAt(0).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">{message.username}</span>
+                          <span className="font-medium text-sm">{message.username}</span>
                           {message.isAnonymous && (
                             <span className="text-xs bg-yellow-800 text-yellow-300 px-1.5 py-0.5 rounded-full">
                               Guest
@@ -1077,14 +1077,14 @@ export default function RoomPage() {
                     placeholder="Type a message... (Type !skip to vote skip)"
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
-                    className="pr-10 bg-white/5 border-white/10"
+                    className="bg-white/5 border-white/10 pr-10"
                   />
-                  <div className="absolute transform -translate-y-1/2 right-2 top-1/2">
+                  <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
                     <EmojiPicker onEmojiSelect={handleEmojiSelect} />
                   </div>
                 </div>
                 <Button type="submit" size="icon" variant="ghost">
-                  <Send className="w-4 h-4" />
+                  <Send className="h-4 w-4" />
                 </Button>
               </div>
             </form>
@@ -1092,9 +1092,9 @@ export default function RoomPage() {
         </div>
 
         {/* Sidebar */}
-        <div className="flex flex-col border-l w-80 border-white/10">
+        <div className="w-80 border-l border-white/10 flex flex-col">
           <Tabs defaultValue="queue" value={activeTab} onValueChange={setActiveTab} className="flex-1">
-            <TabsList className="justify-start w-full h-12 px-2 border-b border-white/10">
+            <TabsList className="w-full justify-start border-b border-white/10 px-2 h-12">
               <TabsTrigger value="queue" className="data-[state=active]:bg-white/5">
                 Queue
               </TabsTrigger>
@@ -1102,7 +1102,7 @@ export default function RoomPage() {
                 Add Songs
               </TabsTrigger>
               <TabsTrigger value="participants" className="data-[state=active]:bg-white/5">
-                <Users className="w-4 h-4 mr-1" />
+                <Users className="h-4 w-4 mr-1" />
                 {participants.length}
               </TabsTrigger>
             </TabsList>
@@ -1132,13 +1132,13 @@ export default function RoomPage() {
                     className="bg-white/5 border-white/10"
                   />
                   <Button onClick={searchYouTube} disabled={isSearching} size="icon" variant="ghost">
-                    <Search className="w-4 h-4" />
+                    <Search className="h-4 w-4" />
                   </Button>
                 </div>
 
                 <ScrollArea className="h-[calc(100vh-14rem)]">
                   {isSearching ? (
-                    <p className="py-4 text-center text-gray-400">Searching...</p>
+                    <p className="text-center py-4 text-gray-400">Searching...</p>
                   ) : searchResults.length > 0 ? (
                     <div className="space-y-4">
                       {searchResults.map((video) => (
@@ -1146,8 +1146,8 @@ export default function RoomPage() {
                       ))}
                     </div>
                   ) : (
-                    <div className="py-4 text-center">
-                      <Search className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                    <div className="text-center py-4">
+                      <Search className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                       <p className="text-gray-400">Search for songs to add to the queue</p>
                     </div>
                   )}
@@ -1156,7 +1156,7 @@ export default function RoomPage() {
             </TabsContent>
 
             <TabsContent value="participants" className="flex-1 p-4">
-              <h3 className="mb-4 text-sm font-medium">People in this room</h3>
+              <h3 className="text-sm font-medium mb-4">People in this room</h3>
               <ParticipantsList participants={participants} creatorId={room.createdBy} />
             </TabsContent>
           </Tabs>
