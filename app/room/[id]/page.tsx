@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { ArrowLeft, Search, Send, Music, Play, Pause, SkipForward, Users, Shuffle } from "lucide-react"
+import { ArrowLeft, Search, Send, Music, Play, Pause, SkipForward, Users, Shuffle, Bookmark, BookmarkCheck, } from "lucide-react"
 import Link from "next/link"
 import { YouTubePlayer } from "@/components/youtube-player"
 import { SearchResults } from "@/components/search-results"
@@ -25,6 +25,8 @@ import { EmojiPicker } from "@/components/emoji-picker"
 import { ParticipantsList } from "@/components/participants-list"
 import { format } from "date-fns"
 import { DraggableQueue } from "@/components/draggable-queue"
+import { UserPlaylist } from "@/components/user-playlist"
+import { addSongToPlaylist, getUserPlaylist, isSongInPlaylist, removeSongFromPlaylist } from "@/lib/playlist-service"
 
 interface Message {
   id: string
@@ -97,6 +99,8 @@ export default function RoomPage() {
   const [volume, setVolume] = useState(100)
   const [participants, setParticipants] = useState<Participant[]>([])
   const [activeTab, setActiveTab] = useState("queue")
+  const [isSongSaved, setIsSongSaved] = useState(false)
+  const [isCheckingSaved, setIsCheckingSaved] = useState(false)
 
   const playerRef = useRef<YouTubePlayerType | null>(null)
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -192,6 +196,15 @@ export default function RoomPage() {
           isAnonymous: user.isAnonymous,
           lastActive: serverTimestamp(),
         })
+        // Count the current active participants and update the count
+        const participantsListRef = ref(db, `rooms/${roomId}/participantsList`)
+        const snapshot = await get(participantsListRef)
+        if (snapshot.exists()) {
+          const participantsCount = Object.keys(snapshot.val()).length
+          await update(ref(db, `rooms/${roomId}`), {
+            participants: participantsCount,
+          })
+        }
       } catch (error) {
         console.error("Error updating presence:", error)
       }
@@ -214,7 +227,19 @@ export default function RoomPage() {
       // Remove participant when leaving
       if (user && roomId) {
         const participantRef = ref(db, `rooms/${roomId}/participantsList/${user.uid}`)
-        set(participantRef, null).catch((error) => {
+        set(participantRef, null)
+          .then(() => {
+            // Recount participants after removal
+            const participantsListRef = ref(db, `rooms/${roomId}/participantsList`)
+            return get(participantsListRef)
+          })
+          .then((snapshot) => {
+            const count = snapshot.exists() ? Object.keys(snapshot.val()).length : 0
+            return update(ref(db, `rooms/${roomId}`), {
+              participants: count,
+            })
+          })
+          .catch((error) => {
           console.error("Error removing participant:", error)
         })
       }
@@ -270,6 +295,8 @@ export default function RoomPage() {
                   isPlaying: updatedRoom.playbackState?.isPlaying || false,
                   currentTime: updatedRoom.playbackState?.currentTime || 0,
                 })
+                // Check if the new song is saved in the user's playlist
+                checkIfSongIsSaved(updatedRoom.currentlyPlaying?.videoId)
               } else if (updatedRoom.playbackState?.isPlaying !== prevRoom.playbackState?.isPlaying) {
                 // If only play state changed, update that
                 setLocalPlaybackState((prev) => ({
@@ -320,6 +347,8 @@ export default function RoomPage() {
           setCanListen(roomData.createdBy === user?.uid || roomData.allowOthersToListen)
           setAllowOthersToListen(roomData.allowOthersToListen || true)
 
+          // Check if the current song is saved in the user's playlist
+          checkIfSongIsSaved(newRoom.currentlyPlaying?.videoId)
           return newRoom
         })
       } else {
@@ -367,6 +396,26 @@ export default function RoomPage() {
       }
     }
   }, [roomId, router, user])
+
+    // Check if the current song is saved in the user's playlist
+    const checkIfSongIsSaved = async (videoId?: string) => {
+      if (!user || user.isAnonymous || !videoId) {
+        setIsSongSaved(false)
+        return
+      }
+  
+      setIsCheckingSaved(true)
+      try {
+        const result = await isSongInPlaylist(user.uid, videoId)
+        if (result.success) {
+          setIsSongSaved(result.inPlaylist)
+        }
+      } catch (error) {
+        console.error("Error checking if song is saved:", error)
+      } finally {
+        setIsCheckingSaved(false)
+      }
+    }
 
   const playNextSong = useCallback(async () => {
     if (!room || !isCreator) return
@@ -721,10 +770,10 @@ export default function RoomPage() {
 
     const song: Song = {
       id: Date.now().toString(),
-      videoId: video.id.videoId,
-      title: video.snippet.title,
-      thumbnail: video.snippet.thumbnails.default.url,
-      channelTitle: video.snippet.channelTitle,
+      videoId: video.id.videoId || video.videoId,
+      title: video.snippet?.title || video.title,
+      thumbnail: video.snippet?.thumbnails?.default?.url || video.thumbnail,
+      channelTitle: video.snippet?.channelTitle || video.channelTitle,
       addedBy: user.uid,
       addedByName: user.displayName || `Guest ${Math.floor(Math.random() * 1000)}`,
       addedByAnonymous: user.isAnonymous,
@@ -761,8 +810,10 @@ export default function RoomPage() {
 
       setSearchQuery("")
       setSearchResults([])
+      toast.success("Song added to queue")
     } catch (error) {
       console.error("Error adding to queue:", error)
+      toast.error("Failed to add song to queue")
     }
   }
 
@@ -917,6 +968,39 @@ export default function RoomPage() {
     [isCreator, roomId],
   )
 
+  const handleSaveSong = async () => {
+    if (!user || !room?.currentlyPlaying || user.isAnonymous) {
+      toast.error("You need to be logged in to save songs")
+      return
+    }
+
+    try {
+      if (isSongSaved) {
+        // Find the song ID in the playlist
+        const result = await getUserPlaylist(user.uid)
+        if (result.success) {
+          const song = result.playlist.find((s) => s.videoId === room.currentlyPlaying.videoId)
+          if (song) {
+            await removeSongFromPlaylist(user.uid, song.id)
+            setIsSongSaved(false)
+            toast.success("Song removed from your playlist")
+          }
+        }
+      } else {
+        const result = await addSongToPlaylist(user.uid, room.currentlyPlaying)
+        if (result.success) {
+          setIsSongSaved(true)
+          toast.success("Song saved to your playlist")
+        } else {
+          toast.error("Failed to save song")
+        }
+      }
+    } catch (error) {
+      console.error("Error saving song:", error)
+      toast.error("An error occurred while saving the song")
+    }
+  }
+
   //shuffleQueue
   const shuffleQueue = useCallback(async () => {
     if (!isCreator || !roomId || !room?.queue || room.queue.length < 2) return
@@ -1043,6 +1127,21 @@ export default function RoomPage() {
                         </Button>
                       </>
                     )}
+                    {!user?.isAnonymous && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={handleSaveSong}
+                        disabled={isCheckingSaved}
+                        title={isSongSaved ? "Song saved to your playlist" : "Save to your playlist"}
+                      >
+                        {isSongSaved ? (
+                          <BookmarkCheck className="w-5 h-5 text-green-500" />
+                        ) : (
+                          <Bookmark className="w-5 h-5" />
+                        )}
+                      </Button>
+                    )}
                     <VolumeControl onVolumeChange={setVolume} initialVolume={volume} />
                   </div>
                 </div>
@@ -1129,6 +1228,9 @@ export default function RoomPage() {
               <TabsTrigger value="search" className="data-[state=active]:bg-white/5">
                 Add Songs
               </TabsTrigger>
+              <TabsTrigger value="playlist" className="data-[state=active]:bg-white/5">
+                My Playlist
+              </TabsTrigger>
               <TabsTrigger value="participants" className="data-[state=active]:bg-white/5">
                 <Users className="w-4 h-4 mr-1" />
                 {participants.length}
@@ -1190,6 +1292,21 @@ export default function RoomPage() {
                   )}
                 </ScrollArea>
               </div>
+            </TabsContent>
+            
+            <TabsContent value="playlist" className="flex-1 p-4">
+              {user && !user.isAnonymous ? (
+                <UserPlaylist userId={user.uid} onAddToQueue={addToQueue} />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-[200px]">
+                  <p className="mb-2 text-sm text-gray-400">Sign in to use playlists</p>
+                  <Link href="/login">
+                    <Button variant="outline" size="sm">
+                      Sign in
+                    </Button>
+                  </Link>
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="participants" className="flex-1 p-4">
