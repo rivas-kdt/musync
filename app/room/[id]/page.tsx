@@ -1219,7 +1219,7 @@ export default function RoomPage() {
         </div>
 
         {/* Sidebar */}
-        <div className="flex flex-col border-l w-80 border-white/10">
+        <div className="flex flex-col border-l w-[400px] border-white/10">
           <Tabs defaultValue="queue" value={activeTab} onValueChange={setActiveTab} className="flex-1">
             <TabsList className="justify-start w-full h-12 px-2 border-b border-white/10">
               <TabsTrigger value="queue" className="data-[state=active]:bg-white/5">
