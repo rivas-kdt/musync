@@ -101,6 +101,7 @@ export default function RoomPage() {
   const [activeTab, setActiveTab] = useState("queue")
   const [isSongSaved, setIsSongSaved] = useState(false)
   const [isCheckingSaved, setIsCheckingSaved] = useState(false)
+  const [searchEngine, setSearchEngine] = useState<1 | 2 | 3>(1)
 
   const playerRef = useRef<YouTubePlayerType | null>(null)
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -751,7 +752,12 @@ export default function RoomPage() {
     setIsSearching(true)
 
     try {
-      const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(searchQuery)}`)
+      const endpoint =
+        searchEngine === 1
+          ? `/api/youtube/search?q=${encodeURIComponent(searchQuery)}`
+          : searchEngine === 2 ? `/api/youtube/search2?q=${encodeURIComponent(searchQuery)}` : `/api/youtube/search3?q=${encodeURIComponent(searchQuery)}`
+
+      const response = await fetch(endpoint)
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
@@ -759,7 +765,28 @@ export default function RoomPage() {
 
       setSearchResults(data.items || [])
     } catch (error) {
-      console.error("Error searching YouTube:", error)
+      
+      // If the primary search engine fails, try the alternative one automatically
+      if (searchEngine === "primary") {
+        toast.error("Primary search failed. Trying alternative search engine...")
+        setSearchEngine("alternative")
+
+        try {
+          const altResponse = await fetch(`/api/youtube/alt-search?q=${encodeURIComponent(searchQuery)}`)
+          if (altResponse.ok) {
+            const altData = await altResponse.json()
+            setSearchResults(altData.items || [])
+            toast.success("Search completed with alternative engine")
+          } else {
+            toast.error("Both search engines failed. Please try again later.")
+          }
+        } catch (fallbackError) {
+          console.error("Fallback search also failed:", fallbackError)
+          toast.error("Both search engines failed. Please try again later.")
+        }
+      } else {
+        toast.error("Search failed. Try switching to the primary search engine.")
+      }
     } finally {
       setIsSearching(false)
     }
@@ -1258,6 +1285,7 @@ export default function RoomPage() {
 
             <TabsContent value="search" className="flex-1 p-4">
               <div className="space-y-4">
+              <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Input
                     placeholder="Search for songs..."
@@ -1273,12 +1301,42 @@ export default function RoomPage() {
                   <Button onClick={searchYouTube} disabled={isSearching} size="icon" variant="ghost">
                     <Search className="w-4 h-4" />
                   </Button>
+                  </div>
+                  {/* Update the search engine toggle UI to include a visual indicator */}
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span>Search engine:</span>
+                      <Button
+                        variant={searchEngine === 1 ? "default" : "outline"}
+                        size="sm"
+                        className="text-xs h-7"
+                        onClick={() => setSearchEngine(1)}
+                      >
+                        1 {searchEngine === 1 && "✓"}
+                      </Button>
+                      <Button
+                        variant={searchEngine === 2 ? "default" : "outline"}
+                        size="sm"
+                        className="text-xs h-7"
+                        onClick={() => setSearchEngine(2)}
+                      >
+                        2 {searchEngine === 2 && "✓"}
+                      </Button>
+                      <Button
+                        variant={searchEngine === 3 ? "default" : "outline"}
+                        size="sm"
+                        className="text-xs h-7"
+                        onClick={() => setSearchEngine(3)}
+                      >
+                        3 {searchEngine === 3 && "✓"}
+                      </Button>
+                    </div>
+                    {isSearching && <span className="text-gray-400">Searching...</span>}
+                  </div>
                 </div>
 
                 <ScrollArea className="h-[calc(100vh-14rem)]">
-                  {isSearching ? (
-                    <p className="py-4 text-center text-gray-400">Searching...</p>
-                  ) : searchResults.length > 0 ? (
+                {searchResults.length > 0 ? (
                     <div className="space-y-4">
                       {searchResults.map((video) => (
                         <SearchResults key={video.id.videoId} video={video} onAdd={() => addToQueue(video)} />
