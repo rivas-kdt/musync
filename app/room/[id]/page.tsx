@@ -96,7 +96,7 @@ export default function RoomPage() {
   const [isTabVisible, setIsTabVisible] = useState(true)
   const [skipVotes, setSkipVotes] = useState<Set<string>>(new Set())
   const [votesToSkip, setVotesToSkip] = useState(2)
-  const [volume, setVolume] = useState(100)
+  const [volume, setVolume] = useState(50)
   const [participants, setParticipants] = useState<Participant[]>([])
   const [activeTab, setActiveTab] = useState("queue")
   const [isSongSaved, setIsSongSaved] = useState(false)

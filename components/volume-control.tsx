@@ -10,7 +10,7 @@ interface VolumeControlProps {
   initialVolume?: number
 }
 
-export function VolumeControl({ onVolumeChange, initialVolume = 50 }: VolumeControlProps) {
+export function VolumeControl({ onVolumeChange, initialVolume = 100 }: VolumeControlProps) {
   const [volume, setVolume] = useState(initialVolume)
   const [previousVolume, setPreviousVolume] = useState(initialVolume)
   const [isMuted, setIsMuted] = useState(false)

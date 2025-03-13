@@ -87,11 +87,11 @@ export function UserPlaylist({ userId, onAddToQueue }: UserPlaylistProps) {
         </p>
       ) : (
         <ScrollArea className="h-[calc(100vh-14rem)]">
-          <div className="space-y-2">
+          <div className="w-full space-y-2">
             {playlist.map((song) => (
               <div
                 key={song.id}
-                className="flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-white/5"
+                className="flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-white/5 w-[375px]"
                 onClick={() => onAddToQueue(song)}
               >
                 <img
