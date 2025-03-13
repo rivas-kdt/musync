@@ -8,7 +8,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Query parameter is required" }, { status: 400 })
   }
 
-  const apiKey = "AIzaSyA_paVu0TigV4d_z-D0-fGiNrlHbPrar4M"
+  const apiKey = process.env.YOUTUBE_API
 
   if (!apiKey) {
     return NextResponse.json({ error: "YouTube API key is not configured" }, { status: 500 })
@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     const response = await fetch(
       `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=20&q=${encodeURIComponent(
         query,
-      )}&type=video&key=${apiKey}`,
+      )}&type=video&videoCategoryId=10&key=${apiKey}`,
     )
 
     if (!response.ok) {
