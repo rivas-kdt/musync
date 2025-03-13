@@ -12,11 +12,12 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { ArrowLeft, Search, Send, Music, Play, Pause, SkipForward, Users } from "lucide-react"
+import { ArrowLeft, Search, Send, Music, Play, Pause, SkipForward, Users, Shuffle } from "lucide-react"
 import Link from "next/link"
 import { YouTubePlayer } from "@/components/youtube-player"
 import { SearchResults } from "@/components/search-results"
 import { Switch } from "@/components/ui/switch"
+import { toast } from "sonner"
 import type { YouTubePlayer as YouTubePlayerType, YouTubeEvent } from "react-youtube"
 import { SeekBar } from "@/components/seek-bar"
 import { VolumeControl } from "@/components/volume-control"
@@ -916,9 +917,36 @@ export default function RoomPage() {
     [isCreator, roomId],
   )
 
+  //shuffleQueue
+  const shuffleQueue = useCallback(async () => {
+    if (!isCreator || !roomId || !room?.queue || room.queue.length < 2) return
+
+    try {
+      // Create a copy of the queue
+      const queueCopy = [...room.queue]
+
+      // Fisher-Yates shuffle algorithm
+      for (let i = queueCopy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[queueCopy[i], queueCopy[j]] = [queueCopy[j], queueCopy[i]]
+      }
+
+      // Update the queue in Firebase
+      const roomRef = ref(db, `rooms/${roomId}`)
+      await update(roomRef, {
+        queue: queueCopy,
+      })
+
+      toast.success("Queue shuffled")
+    } catch (error) {
+      console.error("Error shuffling queue:", error)
+      toast.error("Failed to shuffle queue")
+    }
+  }, [isCreator, roomId, room?.queue])
+
   if (authLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex items-center justify-center min-h-screen">
         <p>Loading...</p>
       </div>
     )
@@ -926,10 +954,10 @@ export default function RoomPage() {
 
   if (showUsernamePrompt) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-black text-white">
-        <div className="w-full max-w-md p-6 rounded-lg bg-gray-900 border border-gray-800">
-          <h2 className="text-xl font-bold mb-4">Choose a display name</h2>
-          <p className="text-gray-400 mb-4">This name will be shown to others in the room.</p>
+      <div className="flex items-center justify-center min-h-screen text-white bg-black">
+        <div className="w-full max-w-md p-6 bg-gray-900 border border-gray-800 rounded-lg">
+          <h2 className="mb-4 text-xl font-bold">Choose a display name</h2>
+          <p className="mb-4 text-gray-400">This name will be shown to others in the room.</p>
           <div className="space-y-4">
             <div>
               <Input
@@ -950,20 +978,20 @@ export default function RoomPage() {
 
   if (!room) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex items-center justify-center min-h-screen">
         <p>Loading room...</p>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col h-screen bg-black text-white">
-      <header className="h-14 flex items-center px-4 border-b border-white/10">
+    <div className="flex flex-col h-screen text-white bg-black">
+      <header className="flex items-center px-4 border-b h-14 border-white/10">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="w-4 h-4" />
           <span className="font-medium">{room.name}</span>
         </Link>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex items-center gap-2 ml-auto">
           <span className="text-sm text-gray-400">
             {room.participants} {room.participants === 1 ? "listener" : "listeners"}
           </span>
@@ -981,7 +1009,7 @@ export default function RoomPage() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Main content */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex flex-col flex-1">
           {/* Current song info */}
           <div className="p-4 border-b border-white/10">
             {room.currentlyPlaying ? (
@@ -990,10 +1018,10 @@ export default function RoomPage() {
                   <img
                     src={room.currentlyPlaying.thumbnail || "/placeholder.svg"}
                     alt={room.currentlyPlaying.title}
-                    className="w-16 h-16 rounded object-cover"
+                    className="object-cover w-16 h-16 rounded"
                   />
                   <div className="flex-1 min-w-0">
-                    <h2 className="font-medium text-lg truncate">{room.currentlyPlaying.title}</h2>
+                    <h2 className="text-lg font-medium truncate">{room.currentlyPlaying.title}</h2>
                     <p className="text-sm text-gray-400">
                       {room.currentlyPlaying.channelTitle} • Added by {room.currentlyPlaying.addedByName}
                       {room.currentlyPlaying.addedByAnonymous && " (Guest)"}
@@ -1003,7 +1031,7 @@ export default function RoomPage() {
                     {isCreator && (
                       <>
                         <Button variant="ghost" size="icon" onClick={togglePlayPause} disabled={!playerReady}>
-                          {localPlaybackState.isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+                          {localPlaybackState.isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                         </Button>
                         <Button
                           variant="ghost"
@@ -1011,7 +1039,7 @@ export default function RoomPage() {
                           onClick={playNextSong}
                           disabled={!playerReady || !room.queue || room.queue.length === 0}
                         >
-                          <SkipForward className="h-5 w-5" />
+                          <SkipForward className="w-5 h-5" />
                         </Button>
                       </>
                     )}
@@ -1026,8 +1054,8 @@ export default function RoomPage() {
                 />
               </div>
             ) : (
-              <div className="text-center py-4">
-                <Music className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+              <div className="py-4 text-center">
+                <Music className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                 <p className="text-gray-400">No song playing</p>
               </div>
             )}
@@ -1037,19 +1065,19 @@ export default function RoomPage() {
           <div className="flex-1 overflow-hidden">
             <ScrollArea className="h-full px-4" ref={scrollAreaRef}>
               {messages.length === 0 ? (
-                <p className="text-center py-8 text-gray-400">No messages yet. Start the conversation!</p>
+                <p className="py-8 text-center text-gray-400">No messages yet. Start the conversation!</p>
               ) : (
-                <div className="space-y-4 py-4">
+                <div className="py-4 space-y-4">
                   {messages.map((message) => (
                     <div key={message.id} className="flex items-start gap-2">
-                      <Avatar className="h-8 w-8">
+                      <Avatar className="w-8 h-8">
                         <AvatarFallback className={message.isAnonymous ? "bg-yellow-800" : ""}>
                           {message.username.charAt(0).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm">{message.username}</span>
+                          <span className="text-sm font-medium">{message.username}</span>
                           {message.isAnonymous && (
                             <span className="text-xs bg-yellow-800 text-yellow-300 px-1.5 py-0.5 rounded-full">
                               Guest
@@ -1077,14 +1105,14 @@ export default function RoomPage() {
                     placeholder="Type a message... (Type !skip to vote skip)"
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
-                    className="bg-white/5 border-white/10 pr-10"
+                    className="pr-10 bg-white/5 border-white/10"
                   />
-                  <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+                  <div className="absolute transform -translate-y-1/2 right-2 top-1/2">
                     <EmojiPicker onEmojiSelect={handleEmojiSelect} />
                   </div>
                 </div>
                 <Button type="submit" size="icon" variant="ghost">
-                  <Send className="h-4 w-4" />
+                  <Send className="w-4 h-4" />
                 </Button>
               </div>
             </form>
@@ -1092,9 +1120,9 @@ export default function RoomPage() {
         </div>
 
         {/* Sidebar */}
-        <div className="w-80 border-l border-white/10 flex flex-col">
+        <div className="flex flex-col border-l w-80 border-white/10">
           <Tabs defaultValue="queue" value={activeTab} onValueChange={setActiveTab} className="flex-1">
-            <TabsList className="w-full justify-start border-b border-white/10 px-2 h-12">
+            <TabsList className="justify-start w-full h-12 px-2 border-b border-white/10">
               <TabsTrigger value="queue" className="data-[state=active]:bg-white/5">
                 Queue
               </TabsTrigger>
@@ -1102,12 +1130,21 @@ export default function RoomPage() {
                 Add Songs
               </TabsTrigger>
               <TabsTrigger value="participants" className="data-[state=active]:bg-white/5">
-                <Users className="h-4 w-4 mr-1" />
+                <Users className="w-4 h-4 mr-1" />
                 {participants.length}
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="queue" className="flex-1 p-4">
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium">Queue</h3>
+                {isCreator && room.queue && room.queue.length > 1 && (
+                  <Button variant="outline" size="sm" onClick={shuffleQueue}>
+                    <Shuffle className="w-4 h-4 mr-2" />
+                    Shuffle
+                  </Button>
+                )}
+              </div>
               <ScrollArea className="h-[calc(100vh-10rem)]">
                 {Array.isArray(room.queue) && room.queue.length > 0 ? (
                   <DraggableQueue songs={room.queue} onReorder={handleQueueReorder} isCreator={isCreator} />
@@ -1132,13 +1169,13 @@ export default function RoomPage() {
                     className="bg-white/5 border-white/10"
                   />
                   <Button onClick={searchYouTube} disabled={isSearching} size="icon" variant="ghost">
-                    <Search className="h-4 w-4" />
+                    <Search className="w-4 h-4" />
                   </Button>
                 </div>
 
                 <ScrollArea className="h-[calc(100vh-14rem)]">
                   {isSearching ? (
-                    <p className="text-center py-4 text-gray-400">Searching...</p>
+                    <p className="py-4 text-center text-gray-400">Searching...</p>
                   ) : searchResults.length > 0 ? (
                     <div className="space-y-4">
                       {searchResults.map((video) => (
@@ -1146,8 +1183,8 @@ export default function RoomPage() {
                       ))}
                     </div>
                   ) : (
-                    <div className="text-center py-4">
-                      <Search className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                    <div className="py-4 text-center">
+                      <Search className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                       <p className="text-gray-400">Search for songs to add to the queue</p>
                     </div>
                   )}
@@ -1156,7 +1193,7 @@ export default function RoomPage() {
             </TabsContent>
 
             <TabsContent value="participants" className="flex-1 p-4">
-              <h3 className="text-sm font-medium mb-4">People in this room</h3>
+              <h3 className="mb-4 text-sm font-medium">People in this room</h3>
               <ParticipantsList participants={participants} creatorId={room.createdBy} />
             </TabsContent>
           </Tabs>
