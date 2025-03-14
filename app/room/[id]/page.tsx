@@ -1028,6 +1028,52 @@ export default function RoomPage() {
     }
   }
 
+  const removeSongFromQueue = useCallback(
+    async (songId: string) => {
+      if (!room || !roomId) return
+
+      try {
+        // If the queue is an array
+        if (Array.isArray(room.queue)) {
+          const updatedQueue = room.queue.filter((song) => song.id !== songId)
+          const roomRef = ref(db, `rooms/${roomId}`)
+          await update(roomRef, {
+            queue: updatedQueue,
+          })
+          toast.success("Song removed from queue")
+        }
+        // If the queue is a Firebase object
+        else {
+          // Find the key for this song
+          const queueRef = ref(db, `rooms/${roomId}/queue`)
+          const snapshot = await get(queueRef)
+
+          if (snapshot.exists()) {
+            const queueData = snapshot.val()
+            let keyToRemove = null
+
+            // Find the key that corresponds to the song ID
+            Object.entries(queueData).forEach(([key, value]: [string, any]) => {
+              if (value.id === songId) {
+                keyToRemove = key
+              }
+            })
+
+            if (keyToRemove) {
+              // Remove the song using the key
+              const songRef = ref(db, `rooms/${roomId}/queue/${keyToRemove}`)
+              await remove(songRef)
+              toast.success("Song removed from queue")
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error removing song from queue:", error)
+        toast.error("Failed to remove song from queue")
+      }
+    },
+    [room, roomId],
+  )
   //shuffleQueue
   const shuffleQueue = useCallback(async () => {
     if (!isCreator || !roomId || !room?.queue || room.queue.length < 2) return
@@ -1276,7 +1322,13 @@ export default function RoomPage() {
               </div>
               <ScrollArea className="h-[calc(100vh-10rem)]">
                 {Array.isArray(room.queue) && room.queue.length > 0 ? (
-                  <DraggableQueue songs={room.queue} onReorder={handleQueueReorder} isCreator={isCreator} />
+                  <DraggableQueue
+                    songs={room.queue}
+                    onReorder={handleQueueReorder}
+                    onRemove={removeSongFromQueue}
+                    isCreator={isCreator}
+                    userId={user?.uid || ""}
+                  />
                 ) : (
                   <p className="text-sm text-gray-400">The queue is empty. Add some songs!</p>
                 )}
