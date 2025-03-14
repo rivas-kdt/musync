@@ -8,7 +8,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Query parameter is required" }, { status: 400 })
   }
 
-  const apiKey = process.env.YOUTUBE_API_1
+  // Use an alternative API key
+  const apiKey = process.env.YOUTUBE_API_KEY || "AIzaSyA_Dn30Djck87lrBFgntgP-A5BiJ7UVm6s"
 
   if (!apiKey) {
     return NextResponse.json({ error: "YouTube API key is not configured" }, { status: 500 })

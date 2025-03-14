@@ -175,8 +175,17 @@ export function YouTubePlayer({
     // Only allow seeks every 2 seconds to prevent skipping
     if (now - lastSeekTimeRef.current > 2000 && playerRef.current) {
       try {
+        // Store the current playing state
+        const wasPlaying = isPlayingRef.current
+
+        // Perform the seek
         playerRef.current.seekTo(time, true)
         lastSeekTimeRef.current = now
+
+        // If it was playing before, ensure it continues playing
+        if (wasPlaying) {
+          playerRef.current.playVideo()
+        }
       } catch (error) {
         console.error("Error seeking:", error)
       }
@@ -186,8 +195,17 @@ export function YouTubePlayer({
         () => {
           if (playerRef.current && mountedRef.current) {
             try {
+              // Store the current playing state
+              const wasPlaying = isPlayingRef.current
+
+              // Perform the seek
               playerRef.current.seekTo(time, true)
               lastSeekTimeRef.current = Date.now()
+
+              // If it was playing before, ensure it continues playing
+              if (wasPlaying) {
+                playerRef.current.playVideo()
+              }
             } catch (error) {
               console.error("Error in debounced seek:", error)
             }

@@ -50,13 +50,13 @@ export function EmojiPicker({ onEmojiSelect }: EmojiPickerProps) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="w-8 h-8 rounded-full">
-          <Smile className="w-5 h-5" />
+        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+          <Smile className="h-5 w-5" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent ref={popoverRef} className="p-0 w-80" side="top" align="end" sideOffset={5}>
+      <PopoverContent ref={popoverRef} className="w-80 p-0" side="top" align="end" sideOffset={5}>
         <div className="border-b border-gray-200 dark:border-gray-700">
-          <div className="flex gap-2 p-2 overflow-x-auto">
+          <div className="flex overflow-x-auto p-2 gap-2">
             {Object.keys(emojis).map((category) => (
               <Button
                 key={category}
@@ -70,12 +70,12 @@ export function EmojiPicker({ onEmojiSelect }: EmojiPickerProps) {
             ))}
           </div>
         </div>
-        <div className="h-48 p-2 overflow-y-auto">
+        <div className="p-2 h-48 overflow-y-auto">
           <div className="grid grid-cols-8 gap-1">
             {emojis[activeCategory].map((emoji) => (
               <button
                 key={emoji}
-                className="flex items-center justify-center w-8 h-8 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                className="flex items-center justify-center h-8 w-8 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
                 onClick={() => handleEmojiClick(emoji)}
               >
                 <span className="text-lg">{emoji}</span>

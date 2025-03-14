@@ -12,7 +12,16 @@ interface SeekBarProps {
 
 export function SeekBar({ currentTime, duration, onSeek, isCreator }: SeekBarProps) {
   const handleSeek = (newValue: number[]) => {
-    onSeek(newValue[0])
+    if (isCreator) {
+      onSeek(newValue[0])
+    }
+  }
+
+  // Add a small delay before triggering the seek to avoid multiple rapid seeks
+  const handleValueCommit = (newValue: number[]) => {
+    if (isCreator) {
+      onSeek(newValue[0])
+    }
   }
 
   return (
@@ -25,6 +34,7 @@ export function SeekBar({ currentTime, duration, onSeek, isCreator }: SeekBarPro
         step={1}
         aria-label="Song progress"
         onValueChange={handleSeek}
+        onValueCommit={handleValueCommit}
         disabled={!isCreator}
       >
         <Slider.Track className="bg-white/20 relative grow rounded-full h-1">
