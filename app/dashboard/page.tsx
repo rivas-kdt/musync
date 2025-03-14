@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Plus, LogOut, Music2, Lock } from "lucide-react"
+import { Plus, LogOut, Music2 } from "lucide-react"
 import Link from "next/link"
 import { signOut } from "firebase/auth"
 
@@ -23,7 +23,6 @@ interface Room {
     title: string
   }
   participants: number
-  isPrivate?: boolean
 }
 
 export default function Dashboard() {
@@ -77,8 +76,6 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
-    if (!user) return
-
     const fetchRooms = () => {
       const roomsRef = ref(db, "rooms")
       const roomsQuery = query(roomsRef, orderByChild("createdAt"))
@@ -92,15 +89,7 @@ export default function Dashboard() {
               id,
               ...room,
             })) as Room[]
-
-            // Filter rooms based on visibility rules:
-            // 1. Show all public rooms
-            // 2. Show private rooms only if the current user is the owner
-            const visibleRooms = roomsList.filter(
-              (room) => !room.isPrivate || (room.isPrivate && room.createdBy === user.uid),
-            )
-
-            setRooms(visibleRooms.reverse()) // Reverse to get newest first
+            setRooms(roomsList.reverse()) // Reverse to get newest first
           } else {
             setRooms([])
           }
@@ -114,7 +103,7 @@ export default function Dashboard() {
     }
 
     fetchRooms()
-  }, [user])
+  }, [])
 
   const handleJoinRoom = () => {
     if (roomCode.trim()) {
@@ -217,19 +206,10 @@ export default function Dashboard() {
               {rooms.map((room) => (
                 <Card key={room.id}>
                   <CardHeader>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <CardTitle>{room.name}</CardTitle>
-                        <CardDescription>
-                          {room.participants} {room.participants === 1 ? "listener" : "listeners"}
-                        </CardDescription>
-                      </div>
-                      {room.isPrivate && (
-                        <div className="flex items-center text-amber-500" title="Private Room">
-                          <Lock className="h-4 w-4" />
-                        </div>
-                      )}
-                    </div>
+                    <CardTitle>{room.name}</CardTitle>
+                    <CardDescription>
+                      {room.participants} {room.participants === 1 ? "listener" : "listeners"}
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     {room.currentlyPlaying ? (

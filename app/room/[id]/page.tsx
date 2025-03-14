@@ -1,23 +1,32 @@
 "use client"
 
+import type React from "react"
+
 import { useEffect, useState, useRef, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { signInAnonymously } from "firebase/auth"
-import { ref, onValue, off, set, push, update, serverTimestamp, increment, get, remove } from "firebase/database"
+import { ref, onValue, off, set, push, update, serverTimestamp, increment, get } from "firebase/database"
 import { auth, db } from "@/lib/firebase/firebase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ArrowLeft, Music, Play, Pause, SkipForward, Bookmark, BookmarkCheck, Globe, Lock } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { ArrowLeft, Search, Send, Music, Play, Pause, SkipForward, Users, Shuffle, Bookmark, BookmarkCheck, } from "lucide-react"
 import Link from "next/link"
 import { YouTubePlayer } from "@/components/youtube-player"
+import { SearchResults } from "@/components/search-results"
 import { Switch } from "@/components/ui/switch"
+import { toast } from "sonner"
 import type { YouTubePlayer as YouTubePlayerType, YouTubeEvent } from "react-youtube"
 import { SeekBar } from "@/components/seek-bar"
 import { VolumeControl } from "@/components/volume-control"
-import { RoomSidebar } from "@/components/room-sidebar"
-import { RoomChat } from "@/components/room-chat"
-import { addSongToPlaylist, isSongInPlaylist, getUserPlaylist, removeSongFromPlaylist } from "@/lib/playlist-service"
-import { toast } from "sonner"
+import { EmojiPicker } from "@/components/emoji-picker"
+import { ParticipantsList } from "@/components/participants-list"
+import { format } from "date-fns"
+import { DraggableQueue } from "@/components/draggable-queue"
+import { UserPlaylist } from "@/components/user-playlist"
+import { addSongToPlaylist, getUserPlaylist, isSongInPlaylist, removeSongFromPlaylist } from "@/lib/playlist-service"
 
 interface Message {
   id: string
@@ -62,7 +71,6 @@ interface Room {
     lastUpdated: number
   }
   allowOthersToListen: boolean
-  isPrivate?: boolean
 }
 
 export default function RoomPage() {
@@ -70,6 +78,10 @@ export default function RoomPage() {
   const [authLoading, setAuthLoading] = useState(true)
   const [room, setRoom] = useState<Room | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
+  const [newMessage, setNewMessage] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [isSearching, setIsSearching] = useState(false)
   const [playerReady, setPlayerReady] = useState(false)
   const [isCreator, setIsCreator] = useState(false)
   const [localPlaybackState, setLocalPlaybackState] = useState({
@@ -77,7 +89,6 @@ export default function RoomPage() {
     currentTime: 0,
   })
   const [allowOthersToListen, setAllowOthersToListen] = useState(true)
-  const [isPrivate, setIsPrivate] = useState(false)
   const [canListen, setCanListen] = useState(false)
   const [duration, setDuration] = useState(0)
   const [username, setUsername] = useState("")
@@ -87,15 +98,18 @@ export default function RoomPage() {
   const [votesToSkip, setVotesToSkip] = useState(2)
   const [volume, setVolume] = useState(50)
   const [participants, setParticipants] = useState<Participant[]>([])
+  const [activeTab, setActiveTab] = useState("queue")
   const [isSongSaved, setIsSongSaved] = useState(false)
   const [isCheckingSaved, setIsCheckingSaved] = useState(false)
-  const [playPauseInProgress, setPlayPauseInProgress] = useState(false)
+  const [searchEngine, setSearchEngine] = useState<1 | 2 | 3>(1)
 
   const playerRef = useRef<YouTubePlayerType | null>(null)
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const checkQueueIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastSyncTimeRef = useRef<number>(0)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
   const songEndTimeRef = useRef<number | null>(null)
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
   const playerErrorCountRef = useRef<number>(0)
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastPlayerStateRef = useRef<number>(-1)
@@ -183,7 +197,6 @@ export default function RoomPage() {
           isAnonymous: user.isAnonymous,
           lastActive: serverTimestamp(),
         })
-
         // Count the current active participants and update the count
         const participantsListRef = ref(db, `rooms/${roomId}/participantsList`)
         const snapshot = await get(participantsListRef)
@@ -228,8 +241,8 @@ export default function RoomPage() {
             })
           })
           .catch((error) => {
-            console.error("Error removing participant:", error)
-          })
+          console.error("Error removing participant:", error)
+        })
       }
     }
   }, [user, roomId])
@@ -283,7 +296,6 @@ export default function RoomPage() {
                   isPlaying: updatedRoom.playbackState?.isPlaying || false,
                   currentTime: updatedRoom.playbackState?.currentTime || 0,
                 })
-
                 // Check if the new song is saved in the user's playlist
                 checkIfSongIsSaved(updatedRoom.currentlyPlaying?.videoId)
               } else if (updatedRoom.playbackState?.isPlaying !== prevRoom.playbackState?.isPlaying) {
@@ -303,7 +315,6 @@ export default function RoomPage() {
               }
             }
             setAllowOthersToListen(updatedRoom.allowOthersToListen)
-            setIsPrivate(updatedRoom.isPrivate || false)
             setIsCreator(updatedRoom.createdBy === user?.uid)
             setCanListen(updatedRoom.createdBy === user?.uid || updatedRoom.allowOthersToListen)
             return updatedRoom
@@ -336,11 +347,9 @@ export default function RoomPage() {
           setIsCreator(roomData.createdBy === user?.uid)
           setCanListen(roomData.createdBy === user?.uid || roomData.allowOthersToListen)
           setAllowOthersToListen(roomData.allowOthersToListen || true)
-          setIsPrivate(roomData.isPrivate || false)
 
           // Check if the current song is saved in the user's playlist
           checkIfSongIsSaved(newRoom.currentlyPlaying?.videoId)
-
           return newRoom
         })
       } else {
@@ -389,25 +398,25 @@ export default function RoomPage() {
     }
   }, [roomId, router, user])
 
-  // Check if the current song is saved in the user's playlist
-  const checkIfSongIsSaved = async (videoId?: string) => {
-    if (!user || user.isAnonymous || !videoId) {
-      setIsSongSaved(false)
-      return
-    }
-
-    setIsCheckingSaved(true)
-    try {
-      const result = await isSongInPlaylist(user.uid, videoId)
-      if (result.success) {
-        setIsSongSaved(result.inPlaylist)
+    // Check if the current song is saved in the user's playlist
+    const checkIfSongIsSaved = async (videoId?: string) => {
+      if (!user || user.isAnonymous || !videoId) {
+        setIsSongSaved(false)
+        return
       }
-    } catch (error) {
-      console.error("Error checking if song is saved:", error)
-    } finally {
-      setIsCheckingSaved(false)
+  
+      setIsCheckingSaved(true)
+      try {
+        const result = await isSongInPlaylist(user.uid, videoId)
+        if (result.success) {
+          setIsSongSaved(result.inPlaylist)
+        }
+      } catch (error) {
+        console.error("Error checking if song is saved:", error)
+      } finally {
+        setIsCheckingSaved(false)
+      }
     }
-  }
 
   const playNextSong = useCallback(async () => {
     if (!room || !isCreator) return
@@ -447,7 +456,6 @@ export default function RoomPage() {
 
         if (nextSong) {
           // Update the current playing song and remove it from the queue
-          // Always ensure isPlaying is true for the next song
           await update(roomRef, {
             currentlyPlaying: nextSong,
             queue: newQueue,
@@ -464,12 +472,6 @@ export default function RoomPage() {
 
           // Reset player error count
           playerErrorCountRef.current = 0
-
-          // Update local state immediately to avoid delay
-          setLocalPlaybackState({
-            isPlaying: true,
-            currentTime: 0,
-          })
 
           return
         }
@@ -564,15 +566,14 @@ export default function RoomPage() {
     lastSyncTimeRef.current = now
 
     // Check if song should end and we need to play the next one
-    if (isCreator && room.currentlyPlaying && duration > 0) {
+    if (isCreator && currentlyPlaying && duration > 0) {
       // If we don't have a song end time yet, calculate it
       if (songEndTimeRef.current === null) {
         songEndTimeRef.current = now + (duration - expectedTime) * 1000
       }
 
-      // If we've reached the end time or exceeded it, play the next song
-      if (now >= songEndTimeRef.current || expectedTime >= duration) {
-        console.log("Song end detected, playing next song")
+      // If we've reached the end time, play the next song
+      if (now >= songEndTimeRef.current) {
         playNextSong()
         songEndTimeRef.current = null
       }
@@ -627,7 +628,6 @@ export default function RoomPage() {
 
         if (playerState === 0) {
           // Video ended
-          console.log("YouTube player reported video ended")
           playNextSong()
           songEndTimeRef.current = null
         }
@@ -668,69 +668,54 @@ export default function RoomPage() {
     [isCreator, playNextSong],
   )
 
-  const togglePlayPause = useCallback(() => {
-    if (!playerRef.current || !room || !playerReady || !isCreator || playPauseInProgress) return
+  // Auto-scroll chat to bottom when new messages arrive
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
+    }
+  }, [messages])
 
-    // Set a flag to prevent multiple rapid toggles
-    setPlayPauseInProgress(true)
+  const togglePlayPause = useCallback(() => {
+    if (!playerRef.current || !room || !playerReady || !isCreator) return
 
     const newPlaybackState = !localPlaybackState.isPlaying
 
-    // Update local state immediately for responsive UI
-    setLocalPlaybackState((prev) => ({
-      ...prev,
-      isPlaying: newPlaybackState,
-    }))
-
-    // Explicitly play or pause the video first
-    if (newPlaybackState) {
-      playerRef.current.playVideo()
-    } else {
-      playerRef.current.pauseVideo()
-    }
-
-    // Then update Firebase
     const roomRef = ref(db, `rooms/${roomId}`)
     update(roomRef, {
       "playbackState/isPlaying": newPlaybackState,
       "playbackState/currentTime": playerRef.current.getCurrentTime(),
       "playbackState/lastUpdated": serverTimestamp(),
-    }).finally(() => {
-      // Reset the flag after a short delay to prevent rapid toggles
-      setTimeout(() => {
-        setPlayPauseInProgress(false)
-      }, 300)
-    })
-  }, [room, roomId, playerReady, localPlaybackState.isPlaying, isCreator, playPauseInProgress])
-
-  // Toggle room privacy
-  const toggleRoomPrivacy = useCallback(async () => {
-    if (!isCreator || !room) return
-
-    const newPrivacyStatus = !isPrivate
-    setIsPrivate(newPrivacyStatus)
-
-    const roomRef = ref(db, `rooms/${roomId}`)
-    await update(roomRef, {
-      isPrivate: newPrivacyStatus,
     })
 
-    toast.success(`Room is now ${newPrivacyStatus ? "private" : "public"}`)
-  }, [isCreator, room, roomId, isPrivate])
+    setLocalPlaybackState((prev) => ({
+      ...prev,
+      isPlaying: newPlaybackState,
+    }))
 
-  // Handle emoji selection
+    // Explicitly play or pause the video
+    if (newPlaybackState) {
+      playerRef.current.playVideo()
+    } else {
+      playerRef.current.pauseVideo()
+    }
+  }, [room, roomId, playerReady, localPlaybackState.isPlaying, isCreator])
+
+  // Add a function to handle emoji selection
   const handleEmojiSelect = (emoji: string) => {
+    setNewMessage((prev) => prev + emoji)
     // Focus the input after adding emoji
     if (inputRef.current) {
       inputRef.current.focus()
     }
   }
 
-  const sendMessage = async (message: string) => {
-    if (!message.trim() || !roomId || !user) return
+  const sendMessage = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!newMessage.trim() || !roomId || !user) return
 
     try {
-      const lowerCaseMessage = message.toLowerCase()
+      const lowerCaseMessage = newMessage.toLowerCase()
 
       // Check for skip vote commands
       if (lowerCaseMessage === "!skip" || lowerCaseMessage === "!vote skip") {
@@ -747,15 +732,63 @@ export default function RoomPage() {
       } else {
         const messagesRef = ref(db, `rooms/${roomId}/messages`)
         await push(messagesRef, {
-          text: message,
+          text: newMessage,
           userId: user.uid,
           username: user.displayName || `Guest ${Math.floor(Math.random() * 1000)}`,
           timestamp: serverTimestamp(),
           isAnonymous: user.isAnonymous,
         })
       }
+
+      setNewMessage("")
     } catch (error) {
       console.error("Error sending message:", error)
+    }
+  }
+
+  const searchYouTube = async () => {
+    if (!searchQuery.trim()) return
+
+    setIsSearching(true)
+
+    try {
+      const endpoint =
+        searchEngine === 1
+          ? `/api/youtube/search?q=${encodeURIComponent(searchQuery)}`
+          : searchEngine === 2 ? `/api/youtube/search2?q=${encodeURIComponent(searchQuery)}` : `/api/youtube/search3?q=${encodeURIComponent(searchQuery)}`
+
+      const response = await fetch(endpoint)
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      const data = await response.json()
+
+      setSearchResults(data.items || [])
+    } catch (error) {
+      
+      // If the primary search engine fails, try the alternative one automatically
+      if (searchEngine === "primary") {
+        toast.error("Primary search failed. Trying alternative search engine...")
+        setSearchEngine("alternative")
+
+        try {
+          const altResponse = await fetch(`/api/youtube/alt-search?q=${encodeURIComponent(searchQuery)}`)
+          if (altResponse.ok) {
+            const altData = await altResponse.json()
+            setSearchResults(altData.items || [])
+            toast.success("Search completed with alternative engine")
+          } else {
+            toast.error("Both search engines failed. Please try again later.")
+          }
+        } catch (fallbackError) {
+          console.error("Fallback search also failed:", fallbackError)
+          toast.error("Both search engines failed. Please try again later.")
+        }
+      } else {
+        toast.error("Search failed. Try switching to the primary search engine.")
+      }
+    } finally {
+      setIsSearching(false)
     }
   }
 
@@ -802,6 +835,8 @@ export default function RoomPage() {
         }
       }
 
+      setSearchQuery("")
+      setSearchResults([])
       toast.success("Song added to queue")
     } catch (error) {
       console.error("Error adding to queue:", error)
@@ -858,12 +893,8 @@ export default function RoomPage() {
               }
             }
 
-            // If we've reached the end time or the current time exceeds duration, play the next song
-            if (
-              songEndTimeRef.current !== null &&
-              (now >= songEndTimeRef.current || playerRef.current?.getCurrentTime() >= duration)
-            ) {
-              console.log("Song end detected in background check, playing next song")
+            // If we've reached the end time, play the next song
+            if (songEndTimeRef.current !== null && now >= songEndTimeRef.current) {
               playNextSong()
               songEndTimeRef.current = null
             }
@@ -897,37 +928,48 @@ export default function RoomPage() {
       if (!isCreator || !playerRef.current) return
 
       try {
-        // Store current playing state before seeking
-        const wasPlaying = localPlaybackState.isPlaying
-
-        // Seek to the new time
         playerRef.current.seekTo(newTime, true)
+        setLocalPlaybackState((prev) => ({ ...prev, currentTime: newTime }))
 
-        // Update local state
-        setLocalPlaybackState((prev) => ({
-          ...prev,
-          currentTime: newTime,
-        }))
-
-        // Update Firebase
         const roomRef = ref(db, `rooms/${roomId}`)
         update(roomRef, {
           "playbackState/currentTime": newTime,
           "playbackState/lastUpdated": serverTimestamp(),
-          // Ensure we maintain the current playing state
-          "playbackState/isPlaying": wasPlaying,
         })
-
-        // If it was playing before seeking, ensure it continues playing
-        if (wasPlaying) {
-          playerRef.current.playVideo()
-        }
       } catch (error) {
         console.error("Error seeking:", error)
       }
     },
-    [isCreator, roomId, localPlaybackState.isPlaying],
+    [isCreator, roomId],
   )
+
+  // Format timestamp for chat messages
+  const formatMessageTime = (timestamp: any) => {
+    if (!timestamp) return ""
+
+    try {
+      // If timestamp is a Firebase server timestamp
+      if (typeof timestamp === "object" && timestamp.toDate) {
+        return format(timestamp.toDate(), "h:mm a")
+      }
+
+      // If timestamp is a number (milliseconds)
+      if (typeof timestamp === "number") {
+        return format(new Date(timestamp), "h:mm a")
+      }
+
+      // If timestamp is already a Date object
+      if (timestamp instanceof Date) {
+        return format(timestamp, "h:mm a")
+      }
+
+      // For other cases, try to convert to date
+      return format(new Date(timestamp), "h:mm a")
+    } catch (error) {
+      console.error("Error formatting timestamp:", error)
+      return ""
+    }
+  }
 
   // Check if we have enough votes to skip
   useEffect(() => {
@@ -953,7 +995,39 @@ export default function RoomPage() {
     [isCreator, roomId],
   )
 
-  // Remove a song from the queue
+  const handleSaveSong = async () => {
+    if (!user || !room?.currentlyPlaying || user.isAnonymous) {
+      toast.error("You need to be logged in to save songs")
+      return
+    }
+
+    try {
+      if (isSongSaved) {
+        // Find the song ID in the playlist
+        const result = await getUserPlaylist(user.uid)
+        if (result.success) {
+          const song = result.playlist.find((s) => s.videoId === room.currentlyPlaying.videoId)
+          if (song) {
+            await removeSongFromPlaylist(user.uid, song.id)
+            setIsSongSaved(false)
+            toast.success("Song removed from your playlist")
+          }
+        }
+      } else {
+        const result = await addSongToPlaylist(user.uid, room.currentlyPlaying)
+        if (result.success) {
+          setIsSongSaved(true)
+          toast.success("Song saved to your playlist")
+        } else {
+          toast.error("Failed to save song")
+        }
+      }
+    } catch (error) {
+      console.error("Error saving song:", error)
+      toast.error("An error occurred while saving the song")
+    }
+  }
+
   const removeSongFromQueue = useCallback(
     async (songId: string) => {
       if (!room || !roomId) return
@@ -1000,42 +1074,7 @@ export default function RoomPage() {
     },
     [room, roomId],
   )
-
-  // Handle saving song to playlist
-  const handleSaveSong = async () => {
-    if (!user || !room?.currentlyPlaying || user.isAnonymous) {
-      toast.error("You need to be logged in to save songs")
-      return
-    }
-
-    try {
-      if (isSongSaved) {
-        // Find the song ID in the playlist
-        const result = await getUserPlaylist(user.uid)
-        if (result.success) {
-          const song = result.playlist.find((s) => s.videoId === room.currentlyPlaying.videoId)
-          if (song) {
-            await removeSongFromPlaylist(user.uid, song.id)
-            setIsSongSaved(false)
-            toast.success("Song removed from your playlist")
-          }
-        }
-      } else {
-        const result = await addSongToPlaylist(user.uid, room.currentlyPlaying)
-        if (result.success) {
-          setIsSongSaved(true)
-          toast.success("Song saved to your playlist")
-        } else {
-          toast.error("Failed to save song")
-        }
-      }
-    } catch (error) {
-      console.error("Error saving song:", error)
-      toast.error("An error occurred while saving the song")
-    }
-  }
-
-  // Shuffle the queue
+  //shuffleQueue
   const shuffleQueue = useCallback(async () => {
     if (!isCreator || !roomId || !room?.queue || room.queue.length < 2) return
 
@@ -1103,7 +1142,7 @@ export default function RoomPage() {
   }
 
   return (
-    <div className="flex flex-col h-full min-h-screen overflow-hidden text-white bg-black">
+    <div className="flex flex-col h-screen text-white bg-black">
       <header className="flex items-center px-4 border-b h-14 border-white/10">
         <Link href="/dashboard" className="flex items-center gap-2">
           <ArrowLeft className="w-4 h-4" />
@@ -1117,33 +1156,15 @@ export default function RoomPage() {
             <span className="text-xs bg-yellow-800 text-yellow-300 px-2 py-0.5 rounded-full">Guest</span>
           )}
           {isCreator && (
-            <>
-              <div className="flex items-center gap-2 ml-4">
-                <span className="text-sm">Allow others to listen:</span>
-                <Switch checked={allowOthersToListen} onCheckedChange={toggleAllowOthersToListen} />
-              </div>
-              <div className="flex items-center gap-2 ml-4">
-                <span className="text-sm">Room privacy:</span>
-                <Button variant="ghost" size="sm" className="flex items-center h-8 gap-1" onClick={toggleRoomPrivacy}>
-                  {isPrivate ? (
-                    <>
-                      <Lock className="w-4 h-4 text-red-400" />
-                      <span className="text-xs">Private</span>
-                    </>
-                  ) : (
-                    <>
-                      <Globe className="w-4 h-4 text-green-400" />
-                      <span className="text-xs">Public</span>
-                    </>
-                  )}
-                </Button>
-              </div>
-            </>
+            <div className="flex items-center gap-2 ml-4">
+              <span className="text-sm">Allow others to listen:</span>
+              <Switch checked={allowOthersToListen} onCheckedChange={toggleAllowOthersToListen} />
+            </div>
           )}
         </div>
       </header>
 
-      <div className="relative flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden">
         {/* Main content */}
         <div className="flex flex-col flex-1">
           {/* Current song info */}
@@ -1166,12 +1187,7 @@ export default function RoomPage() {
                   <div className="flex items-center gap-2">
                     {isCreator && (
                       <>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={togglePlayPause}
-                          disabled={!playerReady || playPauseInProgress}
-                        >
+                        <Button variant="ghost" size="icon" onClick={togglePlayPause} disabled={!playerReady}>
                           {localPlaybackState.isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                         </Button>
                         <Button
@@ -1217,23 +1233,198 @@ export default function RoomPage() {
             )}
           </div>
 
-          {/* Chat component */}
-          <RoomChat messages={messages} onSendMessage={sendMessage} onEmojiSelect={handleEmojiSelect} />
+          {/* Chat messages */}
+          <div className="flex-1 overflow-hidden">
+            <ScrollArea className="h-full px-4" ref={scrollAreaRef}>
+              {messages.length === 0 ? (
+                <p className="py-8 text-center text-gray-400">No messages yet. Start the conversation!</p>
+              ) : (
+                <div className="py-4 space-y-4">
+                  {messages.map((message) => (
+                    <div key={message.id} className="flex items-start gap-2">
+                      <Avatar className="w-8 h-8">
+                        <AvatarFallback className={message.isAnonymous ? "bg-yellow-800" : ""}>
+                          {message.username.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{message.username}</span>
+                          {message.isAnonymous && (
+                            <span className="text-xs bg-yellow-800 text-yellow-300 px-1.5 py-0.5 rounded-full">
+                              Guest
+                            </span>
+                          )}
+                          <span className="text-xs text-gray-400">{formatMessageTime(message.timestamp)}</span>
+                        </div>
+                        <p className="text-sm text-gray-200">{message.text}</p>
+                      </div>
+                    </div>
+                  ))}
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+
+          {/* Chat input */}
+          <div className="p-4 border-t border-white/10">
+            <form onSubmit={sendMessage}>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    ref={inputRef}
+                    placeholder="Type a message... (Type !skip to vote skip)"
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    className="pr-10 bg-white/5 border-white/10"
+                  />
+                  <div className="absolute transform -translate-y-1/2 right-2 top-1/2">
+                    <EmojiPicker onEmojiSelect={handleEmojiSelect} />
+                  </div>
+                </div>
+                <Button type="submit" size="icon" variant="ghost">
+                  <Send className="w-4 h-4" />
+                </Button>
+              </div>
+            </form>
+          </div>
         </div>
 
-        {/* Sidebar component */}
-        <RoomSidebar
-          queue={room.queue || []}
-          participants={participants}
-          creatorId={room.createdBy}
-          isCreator={isCreator}
-          userId={user?.uid || ""}
-          isAnonymous={user?.isAnonymous || false}
-          onAddToQueue={addToQueue}
-          onReorderQueue={handleQueueReorder}
-          onRemoveSong={removeSongFromQueue}
-          onShuffleQueue={shuffleQueue}
-        />
+        {/* Sidebar */}
+        <div className="flex flex-col border-l w-[400px] border-white/10">
+          <Tabs defaultValue="queue" value={activeTab} onValueChange={setActiveTab} className="flex-1">
+            <TabsList className="justify-start w-full h-12 px-2 border-b border-white/10">
+              <TabsTrigger value="queue" className="data-[state=active]:bg-white/5">
+                Queue
+              </TabsTrigger>
+              <TabsTrigger value="search" className="data-[state=active]:bg-white/5">
+                Add Songs
+              </TabsTrigger>
+              <TabsTrigger value="playlist" className="data-[state=active]:bg-white/5">
+                My Playlist
+              </TabsTrigger>
+              <TabsTrigger value="participants" className="data-[state=active]:bg-white/5">
+                <Users className="w-4 h-4 mr-1" />
+                {participants.length}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="queue" className="flex-1 p-4">
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium">Queue</h3>
+                {isCreator && room.queue && room.queue.length > 1 && (
+                  <Button variant="outline" size="sm" onClick={shuffleQueue}>
+                    <Shuffle className="w-4 h-4 mr-2" />
+                    Shuffle
+                  </Button>
+                )}
+              </div>
+              <ScrollArea className="h-[calc(100vh-10rem)]">
+                {Array.isArray(room.queue) && room.queue.length > 0 ? (
+                  <DraggableQueue
+                    songs={room.queue}
+                    onReorder={handleQueueReorder}
+                    onRemove={removeSongFromQueue}
+                    isCreator={isCreator}
+                    userId={user?.uid || ""}
+                  />
+                ) : (
+                  <p className="text-sm text-gray-400">The queue is empty. Add some songs!</p>
+                )}
+              </ScrollArea>
+            </TabsContent>
+
+            <TabsContent value="search" className="flex-1 p-4">
+              <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Search for songs..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        searchYouTube()
+                      }
+                    }}
+                    className="bg-white/5 border-white/10"
+                  />
+                  <Button onClick={searchYouTube} disabled={isSearching} size="icon" variant="ghost">
+                    <Search className="w-4 h-4" />
+                  </Button>
+                  </div>
+                  {/* Update the search engine toggle UI to include a visual indicator */}
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span>Search engine:</span>
+                      <Button
+                        variant={searchEngine === 1 ? "default" : "outline"}
+                        size="sm"
+                        className="text-xs h-7"
+                        onClick={() => setSearchEngine(1)}
+                      >
+                        1 {searchEngine === 1 && "✓"}
+                      </Button>
+                      <Button
+                        variant={searchEngine === 2 ? "default" : "outline"}
+                        size="sm"
+                        className="text-xs h-7"
+                        onClick={() => setSearchEngine(2)}
+                      >
+                        2 {searchEngine === 2 && "✓"}
+                      </Button>
+                      <Button
+                        variant={searchEngine === 3 ? "default" : "outline"}
+                        size="sm"
+                        className="text-xs h-7"
+                        onClick={() => setSearchEngine(3)}
+                      >
+                        3 {searchEngine === 3 && "✓"}
+                      </Button>
+                    </div>
+                    {isSearching && <span className="text-gray-400">Searching...</span>}
+                  </div>
+                </div>
+
+                <ScrollArea className="h-[calc(100vh-14rem)]">
+                {searchResults.length > 0 ? (
+                    <div className="space-y-4">
+                      {searchResults.map((video) => (
+                        <SearchResults key={video.id.videoId} video={video} onAdd={() => addToQueue(video)} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="py-4 text-center">
+                      <Search className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                      <p className="text-gray-400">Search for songs to add to the queue</p>
+                    </div>
+                  )}
+                </ScrollArea>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="playlist" className="flex-1 p-4">
+              {user && !user.isAnonymous ? (
+                <UserPlaylist userId={user.uid} onAddToQueue={addToQueue} />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-[200px]">
+                  <p className="mb-2 text-sm text-gray-400">Sign in to use playlists</p>
+                  <Link href="/login">
+                    <Button variant="outline" size="sm">
+                      Sign in
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="participants" className="flex-1 p-4">
+              <h3 className="mb-4 text-sm font-medium">People in this room</h3>
+              <ParticipantsList participants={participants} creatorId={room.createdBy} />
+            </TabsContent>
+          </Tabs>
+        </div>
 
         {/* Hidden video player */}
         <div className="hidden">

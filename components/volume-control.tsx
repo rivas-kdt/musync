@@ -50,19 +50,19 @@ export function VolumeControl({ onVolumeChange, initialVolume = 100 }: VolumeCon
 
   return (
     <div className="flex items-center gap-2">
-      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleMute}>
+      <Button variant="ghost" size="icon" className="w-8 h-8" onClick={toggleMute}>
         <VolumeIcon />
       </Button>
       <Slider.Root
-        className="relative flex items-center select-none touch-none w-24 h-5"
+        className="relative flex items-center w-24 h-5 select-none touch-none"
         value={[isMuted ? 0 : volume]}
         max={100}
         step={1}
         aria-label="Volume"
         onValueChange={(value) => handleVolumeChange(value)}
       >
-        <Slider.Track className="bg-white/20 relative grow rounded-full h-1">
-          <Slider.Range className="absolute bg-white rounded-full h-full" />
+        <Slider.Track className="relative h-1 rounded-full bg-white/20 grow">
+          <Slider.Range className="absolute h-full bg-white rounded-full" />
         </Slider.Track>
         <Slider.Thumb className="block w-3 h-3 bg-white rounded-full hover:bg-white/90 focus:outline-none focus:ring-2 focus:ring-white" />
       </Slider.Root>

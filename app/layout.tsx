@@ -4,14 +4,14 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import { FirebaseProvider } from "@/lib/firebase/firebase-provider"
 import { ThemeProvider } from "@/components/theme-provider"
-import { Toaster } from "sonner"
+import './globals.css'
+import { Toaster } from "@/components/ui/toaster"
 
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
   title: "Create Next App",
-  description: "A collaborative music listening app where users can listen to YouTube music together in sync",
-    generator: 'v0.dev'
+  description: "A collaborative music listening app where users can listen to YouTube music together in sync"
 }
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -25,7 +25,3 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   )
 }
-
-
-
-import './globals.css'

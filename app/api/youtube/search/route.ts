@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     const response = await fetch(
       `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=20&q=${encodeURIComponent(
         query,
-      )}&type=video&key=${apiKey}`,
+      )}&type=video&videoCategoryId=10&key=${apiKey}`,
     )
 
     if (!response.ok) {

@@ -41,13 +41,6 @@ export function YouTubePlayer({
   const lastSeekTimeRef = useRef<number>(0)
   const seekDebounceTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [isBuffering, setIsBuffering] = useState(false)
-  const bufferingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const forcePlayIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const isPlayingRef = useRef<boolean>(isPlaying)
-  const playerStateRef = useRef<number>(-1)
-  const continuousPlayCheckRef = useRef<NodeJS.Timeout | null>(null)
-  const pendingPlayRef = useRef<boolean>(false)
-  const playAttemptCountRef = useRef<number>(0)
 
   // Track when videoId changes
   useEffect(() => {
@@ -77,138 +70,14 @@ export function YouTubePlayer({
     }
   }, [volume, isPlayerReady, playerError])
 
-  // Setup continuous play check
-  const setupContinuousPlayCheck = useCallback(() => {
-    if (continuousPlayCheckRef.current) {
-      clearInterval(continuousPlayCheckRef.current)
-    }
-
-    continuousPlayCheckRef.current = setInterval(() => {
-      if (!playerRef.current) return
-
-      try {
-        const currentState = playerRef.current.getPlayerState()
-        const currentTime = playerRef.current.getCurrentTime()
-        const duration = playerRef.current.getDuration()
-
-        // If the video is at or past the end (within last 1 second or beyond)
-        if (currentTime >= duration - 1 || currentTime > duration) {
-          console.log("Detected song end in continuous check", { currentTime, duration })
-          onStateChange({
-            target: playerRef.current,
-            data: 0, // YouTube.PlayerState.ENDED
-          })
-        }
-        // If the video should be playing but isn't
-        else if (isPlayingRef.current && currentState !== 1) {
-          console.log("Force playing video due to unexpected pause")
-          playerRef.current.playVideo()
-          pendingPlayRef.current = true
-        }
-
-        // If we have a pending play request, check if it's been fulfilled
-        if (pendingPlayRef.current) {
-          if (currentState === 1) {
-            // Play request fulfilled
-            pendingPlayRef.current = false
-            playAttemptCountRef.current = 0
-          } else if (playAttemptCountRef.current < 5) {
-            // Try again up to 5 times
-            playerRef.current.playVideo()
-            playAttemptCountRef.current++
-          } else {
-            // Give up after 5 attempts
-            pendingPlayRef.current = false
-            playAttemptCountRef.current = 0
-          }
-        }
-      } catch (error) {
-        console.error("Error in continuous play check:", error)
-      }
-    }, 500) // Check more frequently (every 500ms)
-
-    return () => {
-      if (continuousPlayCheckRef.current) {
-        clearInterval(continuousPlayCheckRef.current)
-      }
-    }
-  }, [onStateChange])
-
-  // Setup force play interval
-  const setupForcePlayInterval = useCallback(() => {
-    if (forcePlayIntervalRef.current) {
-      clearInterval(forcePlayIntervalRef.current)
-    }
-
-    if (isPlayingRef.current) {
-      forcePlayIntervalRef.current = setInterval(() => {
-        if (playerRef.current && isPlayingRef.current) {
-          try {
-            const state = playerRef.current.getPlayerState()
-            if (state !== 1) {
-              // If not playing
-              console.log("Force playing video")
-              playerRef.current.playVideo()
-              pendingPlayRef.current = true
-            }
-          } catch (error) {
-            console.error("Error in force play interval:", error)
-          }
-        }
-      }, 1000)
-    }
-
-    return () => {
-      if (forcePlayIntervalRef.current) {
-        clearInterval(forcePlayIntervalRef.current)
-      }
-    }
-  }, [])
-
-  // Handle buffering timeout
-  const handleBuffering = useCallback(() => {
-    setIsBuffering(true)
-
-    // Clear existing timeout
-    if (bufferingTimeoutRef.current) {
-      clearTimeout(bufferingTimeoutRef.current)
-    }
-
-    // Set new timeout
-    bufferingTimeoutRef.current = setTimeout(() => {
-      if (playerRef.current && isPlayingRef.current) {
-        try {
-          // If still buffering after timeout, try to seek slightly ahead
-          const currentTime = playerRef.current.getCurrentTime()
-          playerRef.current.seekTo(currentTime + 1, true)
-          playerRef.current.playVideo()
-          pendingPlayRef.current = true
-        } catch (error) {
-          console.error("Error handling buffering timeout:", error)
-        }
-      }
-      setIsBuffering(false)
-    }, 5000) // 5 second timeout for buffering
-  }, [])
-
   // Debounced seek function to prevent too many seek operations
   const debouncedSeek = useCallback((time: number) => {
     const now = Date.now()
     // Only allow seeks every 2 seconds to prevent skipping
     if (now - lastSeekTimeRef.current > 2000 && playerRef.current) {
       try {
-        // Store the current playing state
-        const wasPlaying = isPlayingRef.current
-
-        // Perform the seek
         playerRef.current.seekTo(time, true)
         lastSeekTimeRef.current = now
-
-        // If it was playing before, ensure it continues playing
-        if (wasPlaying) {
-          playerRef.current.playVideo()
-          pendingPlayRef.current = true
-        }
       } catch (error) {
         console.error("Error seeking:", error)
       }
@@ -218,18 +87,8 @@ export function YouTubePlayer({
         () => {
           if (playerRef.current && mountedRef.current) {
             try {
-              // Store the current playing state
-              const wasPlaying = isPlayingRef.current
-
-              // Perform the seek
               playerRef.current.seekTo(time, true)
               lastSeekTimeRef.current = Date.now()
-
-              // If it was playing before, ensure it continues playing
-              if (wasPlaying) {
-                playerRef.current.playVideo()
-                pendingPlayRef.current = true
-              }
             } catch (error) {
               console.error("Error in debounced seek:", error)
             }
@@ -260,7 +119,6 @@ export function YouTubePlayer({
         // Start playing immediately if isPlaying is true
         if (isPlaying) {
           event.target.playVideo()
-          pendingPlayRef.current = true
         } else {
           event.target.pauseVideo()
         }
@@ -271,44 +129,31 @@ export function YouTubePlayer({
           lastSeekTimeRef.current = Date.now()
         }
 
-        // Setup continuous play check
-        setupContinuousPlayCheck()
-
-        // Setup force play interval
-        setupForcePlayInterval()
+        // Enable background playback
+        event.target.setOption("playerVars", { playsinline: 1 })
       } catch (error) {
         console.error("YouTube player initialization error:", error)
         setPlayerError(true)
       }
     },
-    [onReady, onDurationChange, isPlaying, currentTime, setupContinuousPlayCheck, setupForcePlayInterval],
+    [onReady, onDurationChange, isPlaying, currentTime],
   )
 
   // Handle play/pause changes
   useEffect(() => {
-    isPlayingRef.current = isPlaying
-
     if (isPlayerReady && playerRef.current && !playerError && (isCreator || allowOthersToListen)) {
       try {
-        if (isPlaying) {
-          console.log("Play command received")
+        if (isPlaying && playerRef.current.getPlayerState() !== 1) {
           playerRef.current.playVideo()
-          pendingPlayRef.current = true
-          playAttemptCountRef.current = 0
-          setupForcePlayInterval()
-        } else {
+        } else if (!isPlaying && playerRef.current.getPlayerState() === 1) {
           playerRef.current.pauseVideo()
-          pendingPlayRef.current = false
-          if (forcePlayIntervalRef.current) {
-            clearInterval(forcePlayIntervalRef.current)
-          }
         }
       } catch (error) {
         console.error("YouTube player control error:", error)
         setPlayerError(true)
       }
     }
-  }, [isPlaying, isPlayerReady, isCreator, allowOthersToListen, playerError, setupForcePlayInterval])
+  }, [isPlaying, isPlayerReady, isCreator, allowOthersToListen, playerError])
 
   // Handle time sync
   useEffect(() => {
@@ -335,70 +180,33 @@ export function YouTubePlayer({
     return () => {
       if (seekDebounceTimeoutRef.current) {
         clearTimeout(seekDebounceTimeoutRef.current)
-      }
-      if (bufferingTimeoutRef.current) {
-        clearTimeout(bufferingTimeoutRef.current)
-      }
-      if (forcePlayIntervalRef.current) {
-        clearInterval(forcePlayIntervalRef.current)
-      }
-      if (continuousPlayCheckRef.current) {
-        clearInterval(continuousPlayCheckRef.current)
+        seekDebounceTimeoutRef.current = null
       }
     }
   }, [])
 
-  // Handle player state changes
-  const handlePlayerStateChange = useCallback(
+  // Custom error handler
+  const handleError = useCallback(
     (event: YouTubeEvent) => {
-      if (!playerRef.current || !isPlayerReady) return
-
-      const playerState = event.data
-      playerStateRef.current = playerState
-
-      try {
-        // Handle buffering
-        if (playerState === 3) {
-          // Buffering
-          handleBuffering()
-        } else {
-          setIsBuffering(false)
-          if (bufferingTimeoutRef.current) {
-            clearTimeout(bufferingTimeoutRef.current)
-          }
-        }
-
-        // If we were waiting for a play command to complete and now we're playing
-        if (pendingPlayRef.current && playerState === 1) {
-          pendingPlayRef.current = false
-          playAttemptCountRef.current = 0
-        }
-
-        // Handle video end
-        if (playerState === 0) {
-          // Ended
-          const currentTime = playerRef.current.getCurrentTime()
-          const duration = playerRef.current.getDuration()
-
-          // Only trigger end if we're actually near the end
-          if (duration - currentTime <= 2) {
-            onStateChange(event)
-          } else {
-            // If we're not actually at the end, resume playback
-            if (isPlayingRef.current) {
-              playerRef.current.playVideo()
-              pendingPlayRef.current = true
-            }
-          }
-        } else {
-          onStateChange(event)
-        }
-      } catch (error) {
-        console.error("Error handling player state change:", error)
-      }
+      console.error("YouTube Player Error:", event.data)
+      setPlayerError(true)
+      onError(event)
     },
-    [isPlayerReady, onStateChange, handleBuffering],
+    [onError],
   )
+
+  // Handle tab visibility changes
+  useEffect(() => {
+    if (isPlayerReady && playerRef.current) {
+      if (!isTabVisible && isPlaying) {
+        // If tab is hidden and music should be playing, ensure it's playing
+        playerRef.current.playVideo()
+      } else if (isTabVisible && !isPlaying) {
+        // If tab becomes visible and music should be paused, ensure it's paused
+        playerRef.current.pauseVideo()
+      }
+    }
+  }, [isTabVisible, isPlaying, isPlayerReady])
 
   const opts: Options = {
     height: "390",
@@ -417,17 +225,124 @@ export function YouTubePlayer({
     },
   }
 
+  const handlePlayerStateChange = useCallback((event: YouTubeEvent) => {
+    if (!playerRef.current || !isPlayerReady) return
+
+    const playerState = event.data
+
+    try {
+      const currentTime = playerRef.current.getCurrentTime()
+
+      // Check for buffering state
+      if (playerState === YouTube.PlayerState.BUFFERING) {
+        console.log("Buffering detected")
+        setIsBuffering(true)
+        // Don't update play state here, just wait
+      } else {
+        setIsBuffering(false)
+        // setLocalPlaybackState({
+        //   isPlaying: playerState === YouTube.PlayerState.PLAYING,
+        //   currentTime: currentTime,
+        // })
+      }
+
+      // Update last player state
+      // lastPlayerStateRef.current = playerState
+
+      // if (isCreator) {
+      //   const updateData = {
+      //     "playbackState/isPlaying": playerState === YouTube.PlayerState.PLAYING,
+      //     "playbackState/currentTime": currentTime,
+      //     "playbackState/lastUpdated": serverTimestamp(),
+      //   }
+
+      //   await update(ref(db, `rooms/${roomId}`), updateData)
+      // }
+
+      // if (playerState === YouTube.PlayerState.ENDED) {
+      //   // Video ended
+      //   playNextSong()
+      //   songEndTimeRef.current = null
+      // }
+    } catch (error) {
+      console.error("Error handling player state change:", error)
+    }
+  }, [])
+
+  const syncWithRoom = useCallback(() => {
+    // if (!room || !playerReady || !playerRef.current) return
+    // const { playbackState, currentlyPlaying } = room
+    // if (!currentlyPlaying || !playbackState) return
+    // const now = Date.now()
+    // if (now - lastSyncTimeRef.current < 1000) return // Prevent too frequent syncs
+    // let expectedTime = playbackState.currentTime
+    // if (playbackState.lastUpdated) {
+    //   const timeSinceLastUpdate = (now - playbackState.lastUpdated) / 1000
+    //   expectedTime += playbackState.isPlaying ? timeSinceLastUpdate : 0
+    // }
+    // // Only update player if we're the creator or if others are allowed to listen
+    // if ((isCreator || allowOthersToListen) && playerRef.current) {
+    //   try {
+    //     // Check if player is in a valid state before interacting with it
+    //     if (typeof playerRef.current.getCurrentTime === "function") {
+    //       const currentTime = playerRef.current.getCurrentTime()
+    //       const playerState = playerRef.current.getPlayerState()
+    //       // Only seek if the difference is significant (more than 5 seconds)
+    //       // and we're not currently buffering
+    //       if (Math.abs(currentTime - expectedTime) > 5 && !isBuffering) {
+    //         playerRef.current.seekTo(expectedTime, true)
+    //       }
+    //       // Ensure play/pause state is correct
+    //       if (playbackState.isPlaying && playerState !== YouTube.PlayerState.PLAYING && !isBuffering) {
+    //         playerRef.current.playVideo()
+    //       } else if (!playbackState.isPlaying && playerState === YouTube.PlayerState.PLAYING) {
+    //         playerRef.current.pauseVideo()
+    //       }
+    //       // Store the current player state to detect unexpected changes
+    //       lastPlayerStateRef.current = playerState
+    //     }
+    //   } catch (error) {
+    //     console.error("Error syncing with room:", error)
+    //     // If we encounter an error, we'll try to reinitialize the player on the next sync
+    //     if (isCreator && currentlyPlaying) {
+    //       // If we're the creator, try to play the next song if there's an error with the current one
+    //       const errorCount = playerErrorCountRef.current || 0
+    //       playerErrorCountRef.current = errorCount + 1
+    //       // If we've had multiple errors, try to play the next song
+    //       if (playerErrorCountRef.current > 3) {
+    //         playNextSong()
+    //         playerErrorCountRef.current = 0
+    //       }
+    //     }
+    //   }
+    // }
+    // setLocalPlaybackState({
+    //   isPlaying: playbackState.isPlaying,
+    //   currentTime: expectedTime,
+    // })
+    // lastSyncTimeRef.current = now
+    // // Check if song should end and we need to play the next one
+    // if (isCreator && currentlyPlaying && duration > 0) {
+    //   // If we don't have a song end time yet, calculate it
+    //   if (songEndTimeRef.current === null) {
+    //     songEndTimeRef.current = now + (duration - expectedTime) * 1000
+    //   }
+    //   // If we've reached the end time, play the next song
+    //   if (now >= songEndTimeRef.current) {
+    //     playNextSong()
+    //     songEndTimeRef.current = null
+    //   }
+    // }
+  }, [])
+
   return (
-    <div className="youtube-player-container" style={{ opacity: 0.01, pointerEvents: "none", position: "fixed" }}>
-      <YouTube
-        videoId={videoId}
-        opts={opts}
-        onReady={handleReady}
-        onStateChange={handlePlayerStateChange}
-        onError={onError}
-        className="w-full h-full"
-      />
-    </div>
+    <YouTube
+      videoId={videoId}
+      opts={opts}
+      onReady={handleReady}
+      onStateChange={handlePlayerStateChange}
+      onError={handleError}
+    />
   )
 }
 

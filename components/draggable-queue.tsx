@@ -83,13 +83,13 @@ function SortableQueueItem({
           {...attributes}
           {...listeners}
         >
-          <GripVertical className="h-4 w-4" />
+          <GripVertical className="w-4 h-4" />
         </div>
       )}
-      <div className="flex-shrink-0 w-4 text-center text-gray-400 font-medium">{position}</div>
-      <img src={song.thumbnail || "/placeholder.svg"} alt={song.title} className="w-12 h-12 rounded object-cover" />
+      <div className="flex-shrink-0 w-4 font-medium text-center text-gray-400">{position}</div>
+      <img src={song.thumbnail || "/placeholder.svg"} alt={song.title} className="object-cover w-12 h-12 rounded" />
       <div className="flex-1 min-w-0">
-        <h4 className="font-medium text-sm truncate">{song.title}</h4>
+        <h4 className="text-sm font-medium truncate">{song.title}</h4>
         <p className="text-xs text-gray-400 truncate">{song.channelTitle}</p>
         <p className="text-xs text-gray-400 truncate">
           Added by {song.addedByName}
@@ -100,11 +100,11 @@ function SortableQueueItem({
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-900/20"
+          className="w-8 h-8 text-red-400 hover:text-red-300 hover:bg-red-900/20"
           onClick={() => onRemove(song.id)}
           title="Remove from queue"
         >
-          <Trash2 className="h-4 w-4" />
+          <Trash2 className="w-4 h-4" />
         </Button>
       )}
     </div>
