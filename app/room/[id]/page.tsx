@@ -89,6 +89,7 @@ export default function RoomPage() {
   const [participants, setParticipants] = useState<Participant[]>([])
   const [isSongSaved, setIsSongSaved] = useState(false)
   const [isCheckingSaved, setIsCheckingSaved] = useState(false)
+  const [playPauseInProgress, setPlayPauseInProgress] = useState(false)
 
   const playerRef = useRef<YouTubePlayerType | null>(null)
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -446,6 +447,7 @@ export default function RoomPage() {
 
         if (nextSong) {
           // Update the current playing song and remove it from the queue
+          // Always ensure isPlaying is true for the next song
           await update(roomRef, {
             currentlyPlaying: nextSong,
             queue: newQueue,
@@ -462,6 +464,12 @@ export default function RoomPage() {
 
           // Reset player error count
           playerErrorCountRef.current = 0
+
+          // Update local state immediately to avoid delay
+          setLocalPlaybackState({
+            isPlaying: true,
+            currentTime: 0,
+          })
 
           return
         }
@@ -661,29 +669,39 @@ export default function RoomPage() {
   )
 
   const togglePlayPause = useCallback(() => {
-    if (!playerRef.current || !room || !playerReady || !isCreator) return
+    if (!playerRef.current || !room || !playerReady || !isCreator || playPauseInProgress) return
+
+    // Set a flag to prevent multiple rapid toggles
+    setPlayPauseInProgress(true)
 
     const newPlaybackState = !localPlaybackState.isPlaying
 
-    const roomRef = ref(db, `rooms/${roomId}`)
-    update(roomRef, {
-      "playbackState/isPlaying": newPlaybackState,
-      "playbackState/currentTime": playerRef.current.getCurrentTime(),
-      "playbackState/lastUpdated": serverTimestamp(),
-    })
-
+    // Update local state immediately for responsive UI
     setLocalPlaybackState((prev) => ({
       ...prev,
       isPlaying: newPlaybackState,
     }))
 
-    // Explicitly play or pause the video
+    // Explicitly play or pause the video first
     if (newPlaybackState) {
       playerRef.current.playVideo()
     } else {
       playerRef.current.pauseVideo()
     }
-  }, [room, roomId, playerReady, localPlaybackState.isPlaying, isCreator])
+
+    // Then update Firebase
+    const roomRef = ref(db, `rooms/${roomId}`)
+    update(roomRef, {
+      "playbackState/isPlaying": newPlaybackState,
+      "playbackState/currentTime": playerRef.current.getCurrentTime(),
+      "playbackState/lastUpdated": serverTimestamp(),
+    }).finally(() => {
+      // Reset the flag after a short delay to prevent rapid toggles
+      setTimeout(() => {
+        setPlayPauseInProgress(false)
+      }, 300)
+    })
+  }, [room, roomId, playerReady, localPlaybackState.isPlaying, isCreator, playPauseInProgress])
 
   // Toggle room privacy
   const toggleRoomPrivacy = useCallback(async () => {
@@ -1046,7 +1064,7 @@ export default function RoomPage() {
 
   if (authLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex items-center justify-center min-h-screen">
         <p>Loading...</p>
       </div>
     )
@@ -1054,10 +1072,10 @@ export default function RoomPage() {
 
   if (showUsernamePrompt) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-black text-white">
-        <div className="w-full max-w-md p-6 rounded-lg bg-gray-900 border border-gray-800">
-          <h2 className="text-xl font-bold mb-4">Choose a display name</h2>
-          <p className="text-gray-400 mb-4">This name will be shown to others in the room.</p>
+      <div className="flex items-center justify-center min-h-screen text-white bg-black">
+        <div className="w-full max-w-md p-6 bg-gray-900 border border-gray-800 rounded-lg">
+          <h2 className="mb-4 text-xl font-bold">Choose a display name</h2>
+          <p className="mb-4 text-gray-400">This name will be shown to others in the room.</p>
           <div className="space-y-4">
             <div>
               <Input
@@ -1078,20 +1096,20 @@ export default function RoomPage() {
 
   if (!room) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex items-center justify-center min-h-screen">
         <p>Loading room...</p>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col min-h-screen h-full bg-black text-white overflow-hidden">
-      <header className="h-14 flex items-center px-4 border-b border-white/10">
+    <div className="flex flex-col h-full min-h-screen overflow-hidden text-white bg-black">
+      <header className="flex items-center px-4 border-b h-14 border-white/10">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="w-4 h-4" />
           <span className="font-medium">{room.name}</span>
         </Link>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex items-center gap-2 ml-auto">
           <span className="text-sm text-gray-400">
             {room.participants} {room.participants === 1 ? "listener" : "listeners"}
           </span>
@@ -1106,15 +1124,15 @@ export default function RoomPage() {
               </div>
               <div className="flex items-center gap-2 ml-4">
                 <span className="text-sm">Room privacy:</span>
-                <Button variant="ghost" size="sm" className="flex items-center gap-1 h-8" onClick={toggleRoomPrivacy}>
+                <Button variant="ghost" size="sm" className="flex items-center h-8 gap-1" onClick={toggleRoomPrivacy}>
                   {isPrivate ? (
                     <>
-                      <Lock className="h-4 w-4 text-red-400" />
+                      <Lock className="w-4 h-4 text-red-400" />
                       <span className="text-xs">Private</span>
                     </>
                   ) : (
                     <>
-                      <Globe className="h-4 w-4 text-green-400" />
+                      <Globe className="w-4 h-4 text-green-400" />
                       <span className="text-xs">Public</span>
                     </>
                   )}
@@ -1125,9 +1143,9 @@ export default function RoomPage() {
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="relative flex flex-1 overflow-hidden">
         {/* Main content */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex flex-col flex-1">
           {/* Current song info */}
           <div className="p-4 border-b border-white/10">
             {room.currentlyPlaying ? (
@@ -1136,10 +1154,10 @@ export default function RoomPage() {
                   <img
                     src={room.currentlyPlaying.thumbnail || "/placeholder.svg"}
                     alt={room.currentlyPlaying.title}
-                    className="w-16 h-16 rounded object-cover"
+                    className="object-cover w-16 h-16 rounded"
                   />
                   <div className="flex-1 min-w-0">
-                    <h2 className="font-medium text-lg truncate">{room.currentlyPlaying.title}</h2>
+                    <h2 className="text-lg font-medium truncate">{room.currentlyPlaying.title}</h2>
                     <p className="text-sm text-gray-400">
                       {room.currentlyPlaying.channelTitle} • Added by {room.currentlyPlaying.addedByName}
                       {room.currentlyPlaying.addedByAnonymous && " (Guest)"}
@@ -1148,8 +1166,13 @@ export default function RoomPage() {
                   <div className="flex items-center gap-2">
                     {isCreator && (
                       <>
-                        <Button variant="ghost" size="icon" onClick={togglePlayPause} disabled={!playerReady}>
-                          {localPlaybackState.isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={togglePlayPause}
+                          disabled={!playerReady || playPauseInProgress}
+                        >
+                          {localPlaybackState.isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                         </Button>
                         <Button
                           variant="ghost"
@@ -1157,7 +1180,7 @@ export default function RoomPage() {
                           onClick={playNextSong}
                           disabled={!playerReady || !room.queue || room.queue.length === 0}
                         >
-                          <SkipForward className="h-5 w-5" />
+                          <SkipForward className="w-5 h-5" />
                         </Button>
                       </>
                     )}
@@ -1187,8 +1210,8 @@ export default function RoomPage() {
                 />
               </div>
             ) : (
-              <div className="text-center py-4">
-                <Music className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+              <div className="py-4 text-center">
+                <Music className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                 <p className="text-gray-400">No song playing</p>
               </div>
             )}

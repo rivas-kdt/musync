@@ -46,6 +46,8 @@ export function YouTubePlayer({
   const isPlayingRef = useRef<boolean>(isPlaying)
   const playerStateRef = useRef<number>(-1)
   const continuousPlayCheckRef = useRef<NodeJS.Timeout | null>(null)
+  const pendingPlayRef = useRef<boolean>(false)
+  const playAttemptCountRef = useRef<number>(0)
 
   // Track when videoId changes
   useEffect(() => {
@@ -82,7 +84,7 @@ export function YouTubePlayer({
     }
 
     continuousPlayCheckRef.current = setInterval(() => {
-      if (!playerRef.current || !isPlayingRef.current) return
+      if (!playerRef.current) return
 
       try {
         const currentState = playerRef.current.getPlayerState()
@@ -101,11 +103,29 @@ export function YouTubePlayer({
         else if (isPlayingRef.current && currentState !== 1) {
           console.log("Force playing video due to unexpected pause")
           playerRef.current.playVideo()
+          pendingPlayRef.current = true
+        }
+
+        // If we have a pending play request, check if it's been fulfilled
+        if (pendingPlayRef.current) {
+          if (currentState === 1) {
+            // Play request fulfilled
+            pendingPlayRef.current = false
+            playAttemptCountRef.current = 0
+          } else if (playAttemptCountRef.current < 5) {
+            // Try again up to 5 times
+            playerRef.current.playVideo()
+            playAttemptCountRef.current++
+          } else {
+            // Give up after 5 attempts
+            pendingPlayRef.current = false
+            playAttemptCountRef.current = 0
+          }
         }
       } catch (error) {
         console.error("Error in continuous play check:", error)
       }
-    }, 1000) // Check more frequently
+    }, 500) // Check more frequently (every 500ms)
 
     return () => {
       if (continuousPlayCheckRef.current) {
@@ -129,6 +149,7 @@ export function YouTubePlayer({
               // If not playing
               console.log("Force playing video")
               playerRef.current.playVideo()
+              pendingPlayRef.current = true
             }
           } catch (error) {
             console.error("Error in force play interval:", error)
@@ -161,6 +182,7 @@ export function YouTubePlayer({
           const currentTime = playerRef.current.getCurrentTime()
           playerRef.current.seekTo(currentTime + 1, true)
           playerRef.current.playVideo()
+          pendingPlayRef.current = true
         } catch (error) {
           console.error("Error handling buffering timeout:", error)
         }
@@ -185,6 +207,7 @@ export function YouTubePlayer({
         // If it was playing before, ensure it continues playing
         if (wasPlaying) {
           playerRef.current.playVideo()
+          pendingPlayRef.current = true
         }
       } catch (error) {
         console.error("Error seeking:", error)
@@ -205,6 +228,7 @@ export function YouTubePlayer({
               // If it was playing before, ensure it continues playing
               if (wasPlaying) {
                 playerRef.current.playVideo()
+                pendingPlayRef.current = true
               }
             } catch (error) {
               console.error("Error in debounced seek:", error)
@@ -236,6 +260,7 @@ export function YouTubePlayer({
         // Start playing immediately if isPlaying is true
         if (isPlaying) {
           event.target.playVideo()
+          pendingPlayRef.current = true
         } else {
           event.target.pauseVideo()
         }
@@ -266,10 +291,14 @@ export function YouTubePlayer({
     if (isPlayerReady && playerRef.current && !playerError && (isCreator || allowOthersToListen)) {
       try {
         if (isPlaying) {
+          console.log("Play command received")
           playerRef.current.playVideo()
+          pendingPlayRef.current = true
+          playAttemptCountRef.current = 0
           setupForcePlayInterval()
         } else {
           playerRef.current.pauseVideo()
+          pendingPlayRef.current = false
           if (forcePlayIntervalRef.current) {
             clearInterval(forcePlayIntervalRef.current)
           }
@@ -339,6 +368,12 @@ export function YouTubePlayer({
           }
         }
 
+        // If we were waiting for a play command to complete and now we're playing
+        if (pendingPlayRef.current && playerState === 1) {
+          pendingPlayRef.current = false
+          playAttemptCountRef.current = 0
+        }
+
         // Handle video end
         if (playerState === 0) {
           // Ended
@@ -352,6 +387,7 @@ export function YouTubePlayer({
             // If we're not actually at the end, resume playback
             if (isPlayingRef.current) {
               playerRef.current.playVideo()
+              pendingPlayRef.current = true
             }
           }
         } else {
