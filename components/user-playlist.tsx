@@ -91,8 +91,7 @@ export function UserPlaylist({ userId, onAddToQueue }: UserPlaylistProps) {
             {playlist.map((song) => (
               <div
                 key={song.id}
-                className="flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-white/5 w-[375px]"
-                onClick={() => onAddToQueue(song)}
+                className="flex items-center gap-3 p-2 rounded-md hover:bg-white/5 w-[375px]"
               >
                 <img
                   src={song.thumbnail || "/placeholder.svg"}
